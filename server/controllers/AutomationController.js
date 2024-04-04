@@ -258,6 +258,8 @@ const updateJobResults = async (req, res) => {
     const context = getGraphQLContext({ req });
     const { transaction } = context;
     const {
+        // Old way - testCsvRow and presentationNumber can be removed
+        // once all requests from automation are using the new URL parameter
         testCsvRow,
         presentationNumber,
         responses,
@@ -279,11 +281,15 @@ const updateJobResults = async (req, res) => {
             `Job with id ${id} is not running, cannot update results`
         );
     }
-
+    if (status && !Object.values(COLLECTION_JOB_STATUS).includes(status)) {
+        throw new HttpQueryError(400, `Invalid status: ${status}`, true);
+    }
     const { testPlanRun } = job;
 
-    // v1 tests store testCsvRow in rowNumber, v2 tests store presentationNumber in rowNumber
-    const testRowIdentifier = presentationNumber ?? testCsvRow;
+    // New way: testRowNumber is now a URL request param
+    // Old way: v1 tests store testCsvRow in rowNumber, v2 tests store presentationNumber in rowNumber
+    const testRowIdentifier =
+        req.params.testRowNumber ?? presentationNumber ?? testCsvRow;
     const testId = (
         await getTestByRowIdentifer({
             testPlanRun,
@@ -296,6 +302,7 @@ const updateJobResults = async (req, res) => {
         throwNoTestFoundError(testRowIdentifier);
     }
 
+    // status only update, or responses were provided (default to complete)
     if (status || responses) {
         await updateCollectionJobTestStatusByQuery({
             where: { collectionJobId: id, testId },
@@ -305,31 +312,38 @@ const updateJobResults = async (req, res) => {
         });
     }
 
-    /* TODO: Change this to use a better key based lookup system after gh-958 */
-    const [at] = await getAts({ search: atName, transaction });
-    const [browser] = await getBrowsers({ search: browserName, transaction });
-
-    const [atVersion, browserVersion] = await Promise.all([
-        findOrCreateAtVersion({
-            where: { atId: at.id, name: atVersionName },
+    // responses were provided
+    if (responses) {
+        /* TODO: Change this to use a better key based lookup system after gh-958 */
+        const [at] = await getAts({ search: atName, transaction });
+        const [browser] = await getBrowsers({
+            search: browserName,
             transaction
-        }),
-        findOrCreateBrowserVersion({
-            where: { browserId: browser.id, name: browserVersionName },
-            transaction
-        })
-    ]);
+        });
 
-    const processedResponses = convertEmptyStringsToNoOutputMessages(responses);
+        const [atVersion, browserVersion] = await Promise.all([
+            findOrCreateAtVersion({
+                where: { atId: at.id, name: atVersionName },
+                transaction
+            }),
+            findOrCreateBrowserVersion({
+                where: { browserId: browser.id, name: browserVersionName },
+                transaction
+            })
+        ]);
 
-    await updateOrCreateTestResultWithResponses({
-        testId,
-        responses: processedResponses,
-        testPlanRun: job.testPlanRun,
-        atVersionId: atVersion.id,
-        browserVersionId: browserVersion.id,
-        context
-    });
+        const processedResponses =
+            convertEmptyStringsToNoOutputMessages(responses);
+
+        await updateOrCreateTestResultWithResponses({
+            testId,
+            responses: processedResponses,
+            testPlanRun,
+            atVersionId: atVersion.id,
+            browserVersionId: browserVersion.id,
+            context
+        });
+    }
 
     res.json({ success: true });
 };
