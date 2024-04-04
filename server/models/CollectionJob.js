@@ -45,6 +45,12 @@ module.exports = function (sequelize, DataTypes) {
             sourceKey: 'testPlanRunId',
             as: 'testPlanRun'
         });
+
+        Model.hasMany(models.CollectionJobTestStatus, {
+            as: 'testStatus',
+            foreignKey: 'collectionJobId',
+            sourceKey: 'id'
+        });
     };
 
     Model.QUEUED = COLLECTION_JOB_STATUS.QUEUED;
