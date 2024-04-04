@@ -18,11 +18,11 @@ module.exports = function (sequelize, DataTypes) {
                 references: {
                     model: 'CollectionJob',
                     key: 'id'
-                },
+                }
             },
             testId: {
                 type: DataTypes.STRING,
-                allowNull: null,
+                allowNull: null
             },
             status: {
                 type: DataTypes.STRING,

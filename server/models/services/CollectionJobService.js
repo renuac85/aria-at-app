@@ -181,10 +181,11 @@ const userAssociation = userAttributes => ({
  * @param {string[]} collectionJobTestStatusAttributes - attributes to be returned in the result
  * @returns {{association: string, attributes: string[]}}
  */
-const collectionJobTestStatusAssociation = collectionJobTestStatusAttributes => ({
-    association: 'testStatus',
-    attributes: collectionJobTestStatusAttributes
-});
+const collectionJobTestStatusAssociation =
+    collectionJobTestStatusAttributes => ({
+        association: 'testStatus',
+        attributes: collectionJobTestStatusAttributes
+    });
 
 /**
  * @param {object} options
