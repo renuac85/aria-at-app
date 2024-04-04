@@ -38,8 +38,8 @@ module.exports = function (sequelize, DataTypes) {
 
     Model.associate = function (models) {
         Model.belongsTo(models.CollectionJob, {
-            foreignKey: 'id',
-            targetKey: 'collectionJobId',
+            foreignKey: 'collectionJobId',
+            targetKey: 'id',
             as: 'collectionJob'
         });
     };

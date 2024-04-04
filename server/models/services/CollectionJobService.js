@@ -1,5 +1,5 @@
 const ModelService = require('./ModelService');
-const { CollectionJob } = require('../');
+const { CollectionJob, CollectionJobTestStatus } = require('../');
 const {
     COLLECTION_JOB_ATTRIBUTES,
     TEST_PLAN_ATTRIBUTES,
@@ -27,7 +27,6 @@ const {
 } = require('../../services/GithubWorkflowService');
 const runnableTestsResolver = require('../../resolvers/TestPlanReport/runnableTestsResolver');
 const getGraphQLContext = require('../../graphql-context');
-const CollectionJobTestStatus = require('../CollectionJobTestStatus');
 
 const axiosConfig = {
     headers: {
@@ -243,8 +242,7 @@ const createCollectionJob = async ({
         null,
         context
     );
-
-    await ModelService.bulkCreate(CollectionJobTestStatus, {
+    const testStatus = await ModelService.bulkCreate(CollectionJobTestStatus, {
         valuesList: tests.map(test => ({
             testId: test.id,
             collectionJobId: collectionJobResult.id,
