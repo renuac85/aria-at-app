@@ -242,7 +242,7 @@ const createCollectionJob = async ({
         null,
         context
     );
-    const testStatus = await ModelService.bulkCreate(CollectionJobTestStatus, {
+    await ModelService.bulkCreate(CollectionJobTestStatus, {
         valuesList: tests.map(test => ({
             testId: test.id,
             collectionJobId: collectionJobResult.id,
@@ -639,6 +639,30 @@ const restartCollectionJob = async ({ id }, { transaction }) => {
     return triggerWorkflow(job, [], { transaction });
 };
 
+/**
+ * CollectionJobTestStatus updates
+ */
+
+/**
+ * Update CollectionJobTestStatus entries in bulk via query.
+ * @param {object} options
+ * @param {object} options.where - values of the CollectionJobTestStatus record to be updated
+ * @param {object} options.values - values to be used to update columns for the record being referenced
+ * @param {*} options.transaction - Sequelize transaction
+ * @returns {Promise<*>}
+ */
+const updateCollectionJobTestStatusByQuery = ({
+    where,
+    values = {},
+    transaction
+}) => {
+    return ModelService.update(CollectionJobTestStatus, {
+        values,
+        where,
+        transaction
+    });
+};
+
 module.exports = {
     // Basic CRUD
     createCollectionJob,
@@ -650,5 +674,7 @@ module.exports = {
     scheduleCollectionJob,
     restartCollectionJob,
     cancelCollectionJob,
-    retryCanceledCollections
+    retryCanceledCollections,
+    // Basic CRUD for CollectionJobTestStatus
+    updateCollectionJobTestStatusByQuery
 };

@@ -1,7 +1,8 @@
 const axios = require('axios');
 const {
     getCollectionJobById,
-    updateCollectionJobById
+    updateCollectionJobById,
+    updateCollectionJobTestStatusByQuery
 } = require('../models/services/CollectionJobService');
 const {
     findOrCreateTestResult
@@ -24,7 +25,7 @@ const {
 } = require('../models/services/TestResultReadService');
 const http = require('http');
 const { NO_OUTPUT_STRING } = require('../util/constants');
-const getTests = require('../models/services/TestsService');
+const runnableTestsResolver = require('../resolvers/TestPlanReport/runnableTestsResolver');
 const getGraphQLContext = require('../graphql-context');
 const httpAgent = new http.Agent({ family: 4 });
 
@@ -99,6 +100,23 @@ const updateJobStatus = async (req, res) => {
         ...(externalLogsUrl != null && { externalLogsUrl })
     };
 
+    // When new status is 'COMPLETED' or 'ERROR' or 'CANCELLED'
+    // update any CollectionJobTestStatus children still 'QUEUED' to be 'CANCELLED'
+    if (
+        status === COLLECTION_JOB_STATUS.COMPLETED ||
+        status === COLLECTION_JOB_STATUS.CANCELLED ||
+        status === COLLECTION_JOB_STATUS.ERROR
+    ) {
+        await updateCollectionJobTestStatusByQuery({
+            where: {
+                collectionJobId: req.params.jobID,
+                status: COLLECTION_JOB_STATUS.QUEUED
+            },
+            values: { status: COLLECTION_JOB_STATUS.CANCELLED },
+            transaction: req.transaction
+        });
+    }
+
     const graphqlResponse = await updateCollectionJobById({
         id: req.params.jobID,
         values: updatePayload,
@@ -137,32 +155,29 @@ const getApprovedFinalizedTestResults = async (testPlanRun, context) => {
     return getFinalizedTestResults({ testPlanReport, context });
 };
 
-const updateOrCreateTestResultWithResponses = async ({
+const getTestByRowIdentifer = async ({
+    testPlanRun,
     testRowIdentifier,
+    context
+}) => {
+    const tests = await runnableTestsResolver(
+        testPlanRun.testPlanReport,
+        null,
+        context
+    );
+    return tests.find(
+        test => parseInt(test.rowNumber, 10) === testRowIdentifier
+    );
+};
+
+const updateOrCreateTestResultWithResponses = async ({
+    testId,
     testPlanRun,
     responses,
     atVersionId,
     browserVersionId,
     context
 }) => {
-    const allTestsForTestPlanVersion = await getTests(
-        testPlanRun.testPlanReport.testPlanVersion
-    );
-
-    const isV2 =
-        testPlanRun.testPlanReport.testPlanVersion.metadata
-            .testFormatVersion === 2;
-
-    const testId = allTestsForTestPlanVersion.find(
-        test =>
-            (!isV2 || test.at?.name === 'NVDA') &&
-            parseInt(test.rowNumber, 10) === testRowIdentifier
-    )?.id;
-
-    if (testId === undefined) {
-        throwNoTestFoundError(testRowIdentifier);
-    }
-
     const { testResult } = await findOrCreateTestResult({
         testId,
         testPlanRunId: testPlanRun.id,
@@ -246,6 +261,7 @@ const updateJobResults = async (req, res) => {
         testCsvRow,
         presentationNumber,
         responses,
+        status,
         capabilities: {
             atName,
             atVersion: atVersionName,
@@ -262,6 +278,31 @@ const updateJobResults = async (req, res) => {
         throw new Error(
             `Job with id ${id} is not running, cannot update results`
         );
+    }
+
+    const { testPlanRun } = job;
+
+    // v1 tests store testCsvRow in rowNumber, v2 tests store presentationNumber in rowNumber
+    const testRowIdentifier = presentationNumber ?? testCsvRow;
+    const testId = (
+        await getTestByRowIdentifer({
+            testPlanRun,
+            testRowIdentifier,
+            context
+        })
+    )?.id;
+
+    if (testId === undefined) {
+        throwNoTestFoundError(testRowIdentifier);
+    }
+
+    if (status || responses) {
+        await updateCollectionJobTestStatusByQuery({
+            where: { collectionJobId: id, testId },
+            // default to completed if not specified (when results are present)
+            values: { status: status ?? COLLECTION_JOB_STATUS.COMPLETED },
+            transaction: req.transaction
+        });
     }
 
     /* TODO: Change this to use a better key based lookup system after gh-958 */
@@ -281,11 +322,8 @@ const updateJobResults = async (req, res) => {
 
     const processedResponses = convertEmptyStringsToNoOutputMessages(responses);
 
-    // v1 tests store testCsvRow in rowNumber, v2 tests store presentationNumber in rowNumber
-    const testRowIdentifier = presentationNumber ?? testCsvRow;
-
     await updateOrCreateTestResultWithResponses({
-        testRowIdentifier,
+        testId,
         responses: processedResponses,
         testPlanRun: job.testPlanRun,
         atVersionId: atVersion.id,
